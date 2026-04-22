@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Where Are Your ROYGBIV Lines?</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+
+    /* ── QUIZ ─────────────────────────────────────────────────── */
+    #quiz {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 2rem;
+      background-color: hsl(24, 100%, 50%);
+      transition: background-color 0.5s ease, opacity 0.3s ease;
+    }
+
+    .round-label {
+      font-size: 0.78rem; font-weight: 700;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: rgba(255,255,255,0.65);
+      text-shadow: 0 1px 6px rgba(0,0,0,0.4);
+      user-select: none;
+    }
+
+    /* Six pill segments showing overall progress */
+    .overall-prog {
+      display: flex; gap: 6px;
+    }
+    .seg {
+      height: 5px; width: 28px; border-radius: 3px;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.4);
+      transition: background 0.4s;
+    }
+    .seg.done    { background: rgba(255,255,255,0.85); }
+    .seg.current { background: rgba(255,255,255,0.42); }
+
+    .question {
+      font-size: clamp(1.15rem, 3.5vw, 1.6rem);
+      font-weight: 600; color: #fff; text-align: center;
+      text-shadow: 0 2px 14px rgba(0,0,0,0.35), 0 0 40px rgba(0,0,0,0.15);
+      user-select: none;
+      line-height: 1.4;
+    }
+
+    .buttons { display: flex; gap: 1.2rem; }
+
+    .choice-btn {
+      padding: 0.9rem 2.8rem;
+      font-size: clamp(0.95rem, 2.5vw, 1.1rem);
+      font-weight: 700; letter-spacing: 0.04em;
+      border: 2px solid rgba(255,255,255,0.7);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.18); color: #fff;
+      cursor: pointer;
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      transition: background 0.15s, transform 0.1s;
+      user-select: none;
+    }
+    .choice-btn:hover  { background: rgba(255,255,255,0.35); }
+    .choice-btn:active { transform: scale(0.96); }
+    .choice-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+    /* Dots tracking steps within current boundary search */
+    .search-prog { display: flex; gap: 7px; }
+    .sdot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      border: 1.5px solid rgba(255,255,255,0.5);
+      transition: background 0.2s;
+    }
+    .sdot.on { background: rgba(255,255,255,0.85); }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 2.5rem; left: 50%;
+      transform: translateX(-50%) translateY(14px);
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      color: #fff; padding: 0.5rem 1.4rem;
+      border-radius: 100px;
+      font-size: 0.82rem; font-weight: 600; letter-spacing: 0.03em;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s, transform 0.25s;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── RESULTS ──────────────────────────────────────────────── */
+    #results {
+      position: fixed; inset: 0;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1.6rem;
+      background: #0c0c11;
+      padding: clamp(1.5rem, 5vw, 3rem);
+      overflow-y: auto;
+      opacity: 0; transition: opacity 0.5s;
+    }
+    #results.visible { opacity: 1; }
+
+    .res-title {
+      color: #fff;
+      font-size: clamp(1.4rem, 4vw, 2rem);
+      font-weight: 700; text-align: center;
+    }
+    .res-sub {
+      color: #555; font-size: 0.82rem; text-align: center;
+      margin-top: -0.8rem;
+    }
+
+    /* Spectrum bar */
+    .spectrum-wrap {
+      width: min(780px, 90vw);
+      padding: 18px 0 32px;
+      position: relative;
+    }
+
+    .spectrum-bar {
+      width: 100%; height: 58px;
+      border-radius: 14px;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.6);
+      position: relative;
+      overflow: visible;
+    }
+
+    /* Boundary pin */
+    .pin {
+      position: absolute;
+      top: -16px; bottom: -16px;
+      width: 2.5px;
+      background: rgba(255,255,255,0.88);
+      transform: translateX(-50%);
+      border-radius: 2px;
+      box-shadow: 0 0 8px rgba(255,255,255,0.35);
+    }
+    .pin::before {
+      content: ''; position: absolute;
+      top: -7px; left: 50%; transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top: 0; border-bottom-color: rgba(255,255,255,0.88);
+    }
+    .pin::after {
+      content: ''; position: absolute;
+      bottom: -7px; left: 50%; transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-bottom: 0; border-top-color: rgba(255,255,255,0.88);
+    }
+
+    /* Color region labels sit below the bar */
+    .region-labels {
+      position: absolute;
+      left: 0; right: 0;
+      bottom: 4px;
+      height: 20px;
+    }
+    .rlabel {
+      position: absolute; transform: translateX(-50%);
+      font-size: 0.65rem; font-weight: 800;
+      letter-spacing: 0.1em; text-transform: uppercase; color: #777;
+      white-space: nowrap;
+    }
+
+    /* Summary cards */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.7rem;
+      width: min(780px, 90vw);
+    }
+    @media (max-width: 520px) {
+      .cards { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .card {
+      background: #16161d; border-radius: 10px;
+      padding: 0.8rem 1rem;
+      display: flex; flex-direction: column; gap: 0.22rem;
+    }
+    .card-pair {
+      font-size: 0.68rem; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase; color: #484858;
+    }
+    .card-hue {
+      font-size: 1.1rem; font-weight: 700; color: #fff;
+    }
+    .card-swatch {
+      height: 5px; border-radius: 3px; margin-top: 3px;
+    }
+
+    .again-btn {
+      padding: 0.7rem 2.2rem; font-size: 0.9rem; font-weight: 600;
+      border: 1.5px solid #2a2a36; border-radius: 8px;
+      background: #16161d; color: #aaa; cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .again-btn:hover { background: #20202c; border-color: #555; color: #fff; }
+  </style>
+</head>
+<body>
+
+<!-- ── QUIZ ── -->
+<div id="quiz">
+  <div class="round-label" id="round-label">Boundary 1 of 6</div>
+  <div class="overall-prog" id="overall-prog"></div>
+
+  <div class="question">
+    Is this <strong id="qa"></strong> or <strong id="qb"></strong>?
+  </div>
+
+  <div class="buttons">
+    <button class="choice-btn" id="btn-a" onclick="choose('a')"></button>
+    <button class="choice-btn" id="btn-b" onclick="choose('b')"></button>
+  </div>
+
+  <div class="search-prog" id="search-prog"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- ── RESULTS ── -->
+<div id="results">
+  <div class="res-title">Your Personal ROYGBIV</div>
+  <div class="res-sub">Where you draw the lines between colors</div>
+
+  <div class="spectrum-wrap">
+    <div class="spectrum-bar" id="spec-bar"></div>
+    <div class="region-labels" id="reg-labels"></div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <button class="again-btn" onclick="startOver()">Try Again</button>
+</div>
+
+<script>
+/* ── Config ──────────────────────────────────────────────────── */
+
+// Each boundary: the pair of adjacent ROYGBIV colors and the hue range
+// to search. lo/hi define the min/max hue that could plausibly be the
+// boundary for that pair.
+const BOUNDARIES = [
+  { a: 'Red',    b: 'Orange', lo:   4, hi:  44 },
+  { a: 'Orange', b: 'Yellow', lo:  24, hi:  63 },
+  { a: 'Yellow', b: 'Green',  lo:  52, hi: 108 },
+  { a: 'Green',  b: 'Blue',   lo:  95, hi: 215 },
+  { a: 'Blue',   b: 'Indigo', lo: 200, hi: 268 },
+  { a: 'Indigo', b: 'Violet', lo: 254, hi: 318 },
+];
+
+const COLORS = ['Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Indigo', 'Violet'];
+
+// Spectrum visualization spans this hue range
+const SPEC_LO = 0;
+const SPEC_HI = 325;
+
+const PRECISION = 2;   // stop binary search when range < this (degrees)
+const MAX_SDOTS = 7;   // max search-step dots shown
+
+/* ── State ───────────────────────────────────────────────────── */
+let bi;               // boundary index (0–5)
+let lo, hi, mid, ss;  // current binary search state + step count
+let results;          // array of found boundary hues
+
+/* ── Boot ────────────────────────────────────────────────────── */
+function startOver() {
+  bi = 0; results = [];
+  const quiz = document.getElementById('quiz');
+  const res  = document.getElementById('results');
+  res.classList.remove('visible');
+  res.style.display = 'none';
+  quiz.style.opacity = '1';
+  quiz.style.display = 'flex';
+  loadBoundary(0);
+}
+
+function loadBoundary(idx) {
+  const b = BOUNDARIES[idx];
+  lo  = b.lo;
+  hi  = b.hi;
+  mid = (lo + hi) / 2;
+  ss  = 0;
+  renderQuiz();
+}
+
+/* ── Quiz render ─────────────────────────────────────────────── */
+function renderQuiz() {
+  const b = BOUNDARIES[bi];
+
+  document.getElementById('quiz').style.backgroundColor =
+    `hsl(${mid},100%,50%)`;
+
+  document.getElementById('round-label').textContent =
+    `Boundary ${bi + 1} of ${BOUNDARIES.length}`;
+
+  document.getElementById('qa').textContent    = b.a;
+  document.getElementById('qb').textContent    = b.b;
+  document.getElementById('btn-a').textContent = b.a;
+  document.getElementById('btn-b').textContent = b.b;
+
+  // Overall progress segments
+  const op = document.getElementById('overall-prog');
+  op.innerHTML = '';
+  for (let i = 0; i < BOUNDARIES.length; i++) {
+    const s = document.createElement('div');
+    s.className = 'seg' +
+      (i < bi ? ' done' : i === bi ? ' current' : '');
+    op.appendChild(s);
+  }
+
+  // Per-boundary search dots
+  const sp = document.getElementById('search-prog');
+  sp.innerHTML = '';
+  for (let i = 0; i < MAX_SDOTS; i++) {
+    const d = document.createElement('div');
+    d.className = 'sdot' + (i < ss ? ' on' : '');
+    sp.appendChild(d);
+  }
+}
+
+/* ── Answer handler ──────────────────────────────────────────── */
+function choose(side) {
+  document.getElementById('btn-a').disabled = true;
+  document.getElementById('btn-b').disabled = true;
+
+  // Narrow the search range:
+  // "a" → looks like colorA → boundary is ABOVE mid (higher hue)
+  // "b" → looks like colorB → boundary is BELOW mid (lower hue)
+  if (side === 'a') lo = mid;
+  else              hi = mid;
+
+  mid = (lo + hi) / 2;
+  ss++;
+
+  if ((hi - lo) < PRECISION) {
+    results.push(mid);
+    const b = BOUNDARIES[bi];
+
+    if (bi < BOUNDARIES.length - 1) {
+      toast(`✓  ${b.a} / ${b.b} boundary found`);
+      setTimeout(() => {
+        bi++;
+        loadBoundary(bi);
+        unlock();
+      }, 700);
+    } else {
+      setTimeout(showResults, 500);
+    }
+  } else {
+    renderQuiz();
+    unlock();
+  }
+}
+
+function unlock() {
+  document.getElementById('btn-a').disabled = false;
+  document.getElementById('btn-b').disabled = false;
+}
+
+/* ── Toast ───────────────────────────────────────────────────── */
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/* ── Results ─────────────────────────────────────────────────── */
+
+// Map a hue value to a % position on the spectrum bar
+function hpct(hue) {
+  return ((hue - SPEC_LO) / (SPEC_HI - SPEC_LO)) * 100;
+}
+
+// Dense stops so the gradient looks right in sRGB space
+function buildGradient() {
+  const n = 60;
+  const stops = [];
+  for (let i = 0; i <= n; i++) {
+    const t   = i / n;
+    const hue = SPEC_LO + t * (SPEC_HI - SPEC_LO);
+    stops.push(`hsl(${hue.toFixed(1)},100%,50%) ${(t * 100).toFixed(2)}%`);
+  }
+  return `linear-gradient(to right,${stops.join(',')})`;
+}
+
+function showResults() {
+  const quiz = document.getElementById('quiz');
+  const res  = document.getElementById('results');
+
+  quiz.style.opacity = '0';
+
+  setTimeout(() => {
+    quiz.style.display = 'none';
+
+    // Spectrum gradient
+    const bar = document.getElementById('spec-bar');
+    bar.style.background = buildGradient();
+    bar.querySelectorAll('.pin').forEach(p => p.remove());
+
+    // Pins at each boundary
+    results.forEach(hue => {
+      const pin = document.createElement('div');
+      pin.className = 'pin';
+      pin.style.left = `${hpct(hue).toFixed(2)}%`;
+      bar.appendChild(pin);
+    });
+
+    // Color region labels
+    // 7 regions with edges: [SPEC_LO, r0, r1, r2, r3, r4, r5, SPEC_HI]
+    const rl = document.getElementById('reg-labels');
+    rl.innerHTML = '';
+    const edges = [SPEC_LO, ...results, SPEC_HI];
+    COLORS.forEach((name, i) => {
+      const centerHue = (edges[i] + edges[i + 1]) / 2;
+      const lbl = document.createElement('div');
+      lbl.className   = 'rlabel';
+      lbl.textContent = name;
+      lbl.style.left  = `${hpct(centerHue).toFixed(2)}%`;
+      rl.appendChild(lbl);
+    });
+
+    // Summary cards
+    const cards = document.getElementById('cards');
+    cards.innerHTML = '';
+    results.forEach((hue, i) => {
+      const b = BOUNDARIES[i];
+
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const pair = document.createElement('div');
+      pair.className   = 'card-pair';
+      pair.textContent = `${b.a} / ${b.b}`;
+
+      const hval = document.createElement('div');
+      hval.className   = 'card-hue';
+      hval.textContent = `${Math.round(hue)}°`;
+
+      const sw = document.createElement('div');
+      sw.className        = 'card-swatch';
+      sw.style.background = `hsl(${hue},100%,50%)`;
+
+      card.append(pair, hval, sw);
+      cards.appendChild(card);
+    });
+
+    res.style.display = 'flex';
+    requestAnimationFrame(() => res.classList.add('visible'));
+  }, 350);
+}
+
+/* ── Go ── */
+startOver();
+</script>
+</body>
+</html>
